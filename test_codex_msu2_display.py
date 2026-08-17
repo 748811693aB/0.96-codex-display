@@ -1,7 +1,17 @@
 import datetime as dt
 import unittest
 
-from codex_msu2_native import reset_date_label
+from codex_msu2_native import (
+    CODEX_LOGO_24,
+    DISPLAY_BRIGHTNESS,
+    LOGO_SCALE,
+    LOGO_RESERVED_WIDTH,
+    logo_runs,
+    native_percent_text,
+    percent_layout_changed,
+    percent_start_x,
+    reset_date_label,
+)
 
 from codex_msu2_display import (
     HEIGHT,
@@ -19,6 +29,25 @@ class DisplayTests(unittest.TestCase):
     def test_reset_date_label(self):
         snapshot = UsageSnapshot(40, 60, 1787210118, 10080, "plus")
         self.assertRegex(reset_date_label(snapshot), r"^RESET \d{2}-\d{2}$")
+
+    def test_codex_logo_bitmap(self):
+        self.assertEqual(len(CODEX_LOGO_24), 24)
+        self.assertTrue(all(len(row) == 24 for row in CODEX_LOGO_24))
+        self.assertEqual(set("".join(CODEX_LOGO_24)), {" ", "D", "L", "W"})
+        self.assertTrue(logo_runs())
+        self.assertEqual(LOGO_SCALE, 3)
+
+    def test_percent_reserves_logo_area(self):
+        self.assertEqual(percent_start_x("100%"), LOGO_RESERVED_WIDTH)
+        self.assertEqual(percent_start_x("74%"), LOGO_RESERVED_WIDTH)
+        self.assertEqual(percent_start_x("9%"), 80)
+        self.assertEqual(native_percent_text("100%"), "100")
+        self.assertFalse(percent_layout_changed("51%", "50%"))
+        self.assertTrue(percent_layout_changed("10%", "9%"))
+
+    def test_native_palette_is_slightly_dimmed(self):
+        self.assertGreater(DISPLAY_BRIGHTNESS, 0.75)
+        self.assertLess(DISPLAY_BRIGHTNESS, 1.0)
 
     def test_rgb565_primaries(self):
         self.assertEqual(rgb565(255, 0, 0), 0xF800)

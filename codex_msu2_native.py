@@ -19,6 +19,96 @@ from codex_msu2_display import (
 
 
 ASCII_FONT_PAGE = 3651
+SCREEN_WIDTH = 160
+SCREEN_HEIGHT = 80
+DISPLAY_BRIGHTNESS = 0.82
+LOGO_X = 2
+LOGO_Y = 2
+LOGO_SCALE = 3
+LOGO_SOURCE_INSET = 2
+LOGO_RESERVED_WIDTH = 64
+
+
+def display_color(red: int, green: int, blue: int) -> int:
+    """Convert an RGB color to the slightly dimmed display palette."""
+    return rgb565(
+        round(red * DISPLAY_BRIGHTNESS),
+        round(green * DISPLAY_BRIGHTNESS),
+        round(blue * DISPLAY_BRIGHTNESS),
+    )
+
+
+BACKGROUND = rgb565(0, 0, 0)
+ACCENT = display_color(39, 220, 143)
+FOREGROUND = display_color(236, 244, 255)
+LOGO_LIGHT = display_color(98, 112, 255)
+LOGO_DARK = display_color(40, 60, 212)
+
+# A 24 x 24 source reduction of the official Codex app mark. The non-empty
+# 20 x 20 center is drawn at 3x for a visible 60 x 60 logo. L and D are the
+# light and dark halves of its blue flower, while W draws the white prompt.
+CODEX_LOGO_24 = (
+    "                        ",
+    "                        ",
+    "        LLLLL           ",
+    "       LLLLLLLLLLL      ",
+    "      LLLLLLLLLLLLL     ",
+    "     LLLLLLLLLLLLLLL    ",
+    "    LLLLLLLLLLLLLLLL    ",
+    "   LLLLLLLLLLLLLLLLLL   ",
+    "  LLLLLWLLLLLLLLLLLLL   ",
+    "  LLLLLWWLLLLLLLLLLLL   ",
+    "  LLLLLWWLLLLLLLLLLLL   ",
+    "  LLLLLLWWLLLLLLLLLLLL  ",
+    "  LLLLLLWWLLLLLLLLLLLL  ",
+    "   LLLLWWLLLLLLLLLLLLL  ",
+    "   LLLLWLLLLWWWWWLLLLL  ",
+    "   LLLLLLLLLLLLLLLLLLL  ",
+    "   LDDDDLLLLLLLLLLLLL   ",
+    "   LDDDDDDDLLLLLLLLL    ",
+    "    LDDDDDDDDDDLLL      ",
+    "     LDDDDDDDDDDLL      ",
+    "       LLLLDDDDDL       ",
+    "           LLLLL        ",
+    "                        ",
+    "                        ",
+)
+
+
+def logo_runs() -> list[tuple[int, int, int, str]]:
+    """Return horizontal color runs for efficiently drawing the logo."""
+    runs: list[tuple[int, int, int, str]] = []
+    for y, row in enumerate(CODEX_LOGO_24):
+        x = 0
+        while x < len(row):
+            color_key = row[x]
+            if color_key == " ":
+                x += 1
+                continue
+            start = x
+            while x < len(row) and row[x] == color_key:
+                x += 1
+            runs.append((start, y, x - start, color_key))
+    return runs
+
+
+def percent_start_x(percent_text: str) -> int:
+    """Center the native percentage in the area to the right of the logo."""
+    display_text = native_percent_text(percent_text)
+    available_width = SCREEN_WIDTH - LOGO_RESERVED_WIDTH
+    return LOGO_RESERVED_WIDTH + max(0, (available_width - len(display_text) * 32) // 2)
+
+
+def native_percent_text(percent_text: str) -> str:
+    """Keep the percentage within the three native glyph cells beside the logo."""
+    return "100" if percent_text == "100%" else percent_text[:3]
+
+
+def percent_layout_changed(previous: str, current: str) -> bool:
+    """Return whether old glyph cells must be cleared before redrawing."""
+    return percent_start_x(previous) != percent_start_x(current)
+
+
 def reset_date_label(snapshot: UsageSnapshot) -> str:
     if not snapshot.resets_at:
         return "RESET -- --"
@@ -52,7 +142,7 @@ class NativeDashboard:
         self._send_no_wait(bytes((2, 2)) + foreground.to_bytes(2, "big") + background.to_bytes(2, "big"))
 
     def clear(self, color: int) -> None:
-        self.fill_region(0, 0, 160, 80, color)
+        self.fill_region(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, color)
 
     def fill_region(self, x: int, y: int, width: int, height: int, color: int) -> None:
         self._set_xy(x, y)
@@ -65,22 +155,32 @@ class NativeDashboard:
         self._send_wait(bytes((2, 3, 2, ord(character))) + ASCII_FONT_PAGE.to_bytes(2, "big"))
 
     def draw_percent(self, percent_text: str) -> None:
-        black = rgb565(0, 0, 0)
-        green = rgb565(39, 220, 143)
-        percent_text = percent_text[:5]
-        percent_x = max(0, (160 - len(percent_text) * 32) // 2)
+        percent_text = native_percent_text(percent_text)
+        percent_x = percent_start_x(percent_text)
         for index, character in enumerate(percent_text):
-            self.draw_ascii(percent_x + index * 32, 0, character, green, black)
+            self.draw_ascii(percent_x + index * 32, 0, character, ACCENT, BACKGROUND)
+
+    def clear_percent_area(self) -> None:
+        self.fill_region(LOGO_RESERVED_WIDTH, 0, SCREEN_WIDTH - LOGO_RESERVED_WIDTH, 64, BACKGROUND)
+
+    def draw_codex_logo(self) -> None:
+        colors = {"L": LOGO_LIGHT, "D": LOGO_DARK, "W": FOREGROUND}
+        for x, y, width, color_key in logo_runs():
+            self.fill_region(
+                LOGO_X + (x - LOGO_SOURCE_INSET) * LOGO_SCALE,
+                LOGO_Y + (y - LOGO_SOURCE_INSET) * LOGO_SCALE,
+                width * LOGO_SCALE,
+                LOGO_SCALE,
+                colors[color_key],
+            )
 
     def draw_small_text(self, text: str) -> None:
-        black = rgb565(0, 0, 0)
-        white = rgb565(236, 244, 255)
         scale = 2
         text = text.upper()[:13]
         width = max(0, len(text) * 6 * scale - scale)
-        start_x = max(0, (160 - width) // 2)
+        start_x = max(0, (SCREEN_WIDTH - width) // 2)
         start_y = 65
-        self.fill_region(0, 64, 160, 16, black)
+        self.fill_region(0, 64, SCREEN_WIDTH, 16, BACKGROUND)
         for character_index, character in enumerate(text):
             glyph = FONT_5X7.get(character, FONT_5X7[" "])
             glyph_x = start_x + character_index * 6 * scale
@@ -98,7 +198,7 @@ class NativeDashboard:
                         start_y + row_index * scale,
                         (column - run_start) * scale,
                         scale,
-                        white,
+                        FOREGROUND,
                     )
 
 
@@ -129,6 +229,7 @@ def main() -> int:
     next_usage_refresh = 0.0
     needs_clear = True
     date_dirty = True
+    last_percent_text: str | None = None
     try:
         while not stop:
             started = time.monotonic()
@@ -142,11 +243,18 @@ def main() -> int:
                 if display.serial is None:
                     display.connect()
                     needs_clear = True
+                percent_text = f"{snapshot.remaining_percent}%"
                 if needs_clear:
-                    dashboard.clear(rgb565(0, 0, 0))
+                    dashboard.clear(BACKGROUND)
+                    dashboard.draw_codex_logo()
                     needs_clear = False
                     date_dirty = True
-                dashboard.draw_percent(f"{snapshot.remaining_percent}%")
+                elif last_percent_text is not None and percent_layout_changed(last_percent_text, percent_text):
+                    # Only clear when the glyph count changes and the centered
+                    # text moves. Clearing every 0.2 s makes the LCD flicker.
+                    dashboard.clear_percent_area()
+                last_percent_text = percent_text
+                dashboard.draw_percent(percent_text)
                 if date_dirty:
                     dashboard.draw_small_text(reset_date_label(snapshot))
                     date_dirty = False
@@ -155,6 +263,7 @@ def main() -> int:
                 display.close()
                 needs_clear = True
                 date_dirty = True
+                last_percent_text = None
                 time.sleep(0.5)
 
             elapsed = time.monotonic() - started
