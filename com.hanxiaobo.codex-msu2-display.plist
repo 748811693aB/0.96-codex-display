@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hanxiaobo.codex-msu2-display</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/python3</string>
+        <string>/Users/hanxiaobo/Desktop/codex/codex-msu2-display/codex_msu2_native.py</string>
+        <string>--interval</string>
+        <string>60</string>
+        <string>--device-glob</string>
+        <string>/dev/cu.usbmodem01234567891</string>
+        <string>--draw-interval</string>
+        <string>0.2</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/hanxiaobo/Desktop/codex/codex-msu2-display</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/hanxiaobo/Library/Logs/codex-msu2-display.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/hanxiaobo/Library/Logs/codex-msu2-display.error.log</string>
+</dict>
+</plist>
