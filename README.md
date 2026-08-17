@@ -55,6 +55,26 @@ python3 codex_msu2_native.py \
 - `--draw-interval`：屏幕字形重绘间隔，单位为秒；
 - `--codex`：可选，手动指定 Codex CLI 可执行文件的路径。
 
+## 桌面开关按钮
+
+桌面上的 `Codex显示开关.app` 是一键开关：
+
+- 双击一次，安装并开启 USB 屏幕后台服务；
+- 再双击一次，关闭服务并保持关闭状态；
+- 每次切换后，macOS 会显示“已开启”或“已关闭”通知。
+
+如需重建桌面按钮，请在项目目录执行：
+
+```bash
+osacompile -o ~/Desktop/Codex显示开关.app Codex显示开关.applescript
+```
+
+也可以直接在终端切换：
+
+```bash
+./toggle_codex_display.sh
+```
+
 ## 登录后自动启动
 
 自动启动配置文件中的 Python 路径、项目路径和 USB 设备名必须与本机实际情况一致。可以先执行以下命令进行确认：
@@ -99,6 +119,8 @@ launchctl bootout "gui/$(id -u)" \
 - `test_msu2_glyphs.py`：原生字形和填充指令的硬件测试；
 - `test_codex_msu2_display.py`：不依赖第三方包的单元测试；
 - `com.hanxiaobo.codex-msu2-display.plist`：macOS LaunchAgent 自动启动配置。
+- `toggle_codex_display.sh`：安装、启动、停止和卸载后台服务；
+- `Codex显示开关.applescript`：桌面开关应用的源文件。
 
 ## 测试
 
