@@ -37,6 +37,7 @@ DEFAULT_DEVICE_GLOB = "/dev/cu.usbmodem*"
 FONT_5X7: dict[str, tuple[str, ...]] = {
     " ": ("00000",) * 7,
     "%": ("11001", "11010", "00100", "01000", "10110", "00110", "00000"),
+    "/": ("00001", "00010", "00100", "00100", "01000", "10000", "00000"),
     "-": ("00000", "00000", "00000", "11111", "00000", "00000", "00000"),
     ":": ("00000", "00100", "00100", "00000", "00100", "00100", "00000"),
     "0": ("01110", "10001", "10011", "10101", "11001", "10001", "01110"),
@@ -54,6 +55,7 @@ FONT_5X7: dict[str, tuple[str, ...]] = {
     "D": ("11110", "10001", "10001", "10001", "10001", "10001", "11110"),
     "E": ("11111", "10000", "10000", "11110", "10000", "10000", "11111"),
     "F": ("11111", "10000", "10000", "11110", "10000", "10000", "10000"),
+    "H": ("10001", "10001", "10001", "11111", "10001", "10001", "10001"),
     "L": ("10000", "10000", "10000", "10000", "10000", "10000", "11111"),
     "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
     "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
@@ -85,6 +87,38 @@ class UsageSnapshot:
     resets_at: int | None
     window_minutes: int | None
     plan_type: str | None
+    secondary_used_percent: int | None = None
+    secondary_remaining_percent: int | None = None
+    secondary_resets_at: int | None = None
+    secondary_window_minutes: int | None = None
+
+
+def parse_usage_snapshot(result: dict) -> UsageSnapshot:
+    """Extract the 5-hour primary and weekly secondary Codex limits."""
+    rate_limits = result.get("rateLimitsByLimitId") or {}
+    bucket = rate_limits.get("codex") or result.get("rateLimits") or {}
+    primary = bucket.get("primary") or {}
+    secondary = bucket.get("secondary") or {}
+
+    def used_percent(window: dict) -> int | None:
+        value = window.get("usedPercent")
+        if value is None:
+            return None
+        return min(100, max(0, int(value)))
+
+    primary_used = used_percent(primary)
+    secondary_used = used_percent(secondary)
+    return UsageSnapshot(
+        used_percent=primary_used or 0,
+        remaining_percent=100 - primary_used if primary_used is not None else 100,
+        resets_at=primary.get("resetsAt"),
+        window_minutes=primary.get("windowDurationMins"),
+        plan_type=bucket.get("planType"),
+        secondary_used_percent=secondary_used,
+        secondary_remaining_percent=100 - secondary_used if secondary_used is not None else None,
+        secondary_resets_at=secondary.get("resetsAt"),
+        secondary_window_minutes=secondary.get("windowDurationMins"),
+    )
 
 
 class CodexUsageClient:
@@ -133,18 +167,7 @@ class CodexUsageClient:
             self.start()
             result = self._request("account/rateLimits/read", None)
 
-        rate_limits = result.get("rateLimitsByLimitId") or {}
-        bucket = rate_limits.get("codex") or result.get("rateLimits") or {}
-        primary = bucket.get("primary") or {}
-        used = int(primary.get("usedPercent", 0))
-        used = min(100, max(0, used))
-        return UsageSnapshot(
-            used_percent=used,
-            remaining_percent=100 - used,
-            resets_at=primary.get("resetsAt"),
-            window_minutes=primary.get("windowDurationMins"),
-            plan_type=bucket.get("planType"),
-        )
+        return parse_usage_snapshot(result)
 
     def _request(self, method: str, params: object) -> dict:
         self.request_id += 1
@@ -245,29 +268,25 @@ def render_dashboard(snapshot: UsageSnapshot, now: dt.datetime | None = None) ->
         accent = rgb565(255, 78, 92)
 
     canvas = Canvas565(WIDTH, HEIGHT, background)
-    canvas.draw_text(4, 3, "CODEX", white, scale=2)
-    canvas.draw_text(143, 5, "7D", muted, scale=1)
+    canvas.draw_text(4, 0, f"5H{snapshot.remaining_percent}%", accent, scale=3)
+    weekly = "--" if snapshot.secondary_remaining_percent is None else str(snapshot.secondary_remaining_percent)
+    canvas.draw_text(4, 25, f"7D{weekly}%", accent, scale=3)
 
-    percent_text = f"{snapshot.remaining_percent}%"
-    percent_scale = 4 if len(percent_text) <= 3 else 3
-    canvas.draw_text(4, 22, percent_text, accent, scale=percent_scale)
-    label_x = 4 + text_width(percent_text, percent_scale) + 9
-    canvas.draw_text(label_x, 31, "LEFT", white, scale=2)
-
-    bar_x, bar_y, bar_width, bar_height = 4, 55, 152, 9
+    bar_x, bar_y, bar_width, bar_height = 4, 50, 152, 8
     canvas.fill_rect(bar_x, bar_y, bar_width, bar_height, panel)
     inner_width = bar_width - 4
     filled = round(inner_width * snapshot.remaining_percent / 100)
     if filled:
         canvas.fill_rect(bar_x + 2, bar_y + 2, filled, bar_height - 4, accent)
 
-    if snapshot.resets_at:
-        reset_time = dt.datetime.fromtimestamp(snapshot.resets_at).astimezone()
-        footer = "RESET " + reset_time.strftime("%m-%d %H:%M")
-    else:
-        current = now or dt.datetime.now().astimezone()
-        footer = "UPDATED " + current.strftime("%H:%M")
-    canvas.draw_text(4, 69, footer, muted, scale=1)
+    def reset_clock(timestamp: int | None) -> str:
+        if timestamp is None:
+            return "--:--"
+        return dt.datetime.fromtimestamp(timestamp).astimezone().strftime("%H:%M")
+
+    footer = f"{reset_clock(snapshot.resets_at)}/{reset_clock(snapshot.secondary_resets_at)}"
+    footer_x = (WIDTH - text_width(footer, 2)) // 2
+    canvas.draw_text(footer_x, 63, footer, muted, scale=2)
     return canvas
 
 
@@ -487,13 +506,18 @@ class MSU2Mini:
 
 
 def format_snapshot(snapshot: UsageSnapshot) -> str:
-    if snapshot.resets_at:
-        reset = dt.datetime.fromtimestamp(snapshot.resets_at).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-    else:
-        reset = "unknown"
+    def describe(remaining: int | None, resets_at: int | None) -> str:
+        value = "unknown" if remaining is None else f"{remaining}% remaining"
+        if resets_at:
+            reset = dt.datetime.fromtimestamp(resets_at).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+        else:
+            reset = "unknown"
+        return f"{value}, resets {reset}"
+
     return (
-        f"Codex {snapshot.plan_type or 'unknown'}: used {snapshot.used_percent}%, "
-        f"remaining {snapshot.remaining_percent}%, resets {reset}"
+        f"Codex {snapshot.plan_type or 'unknown'}: "
+        f"5h {describe(snapshot.remaining_percent, snapshot.resets_at)}; "
+        f"weekly {describe(snapshot.secondary_remaining_percent, snapshot.secondary_resets_at)}"
     )
 
 
