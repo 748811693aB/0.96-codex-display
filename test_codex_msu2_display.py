@@ -29,8 +29,8 @@ from codex_msu2_display import (
 class DisplayTests(unittest.TestCase):
     def test_reset_time_label(self):
         snapshot = UsageSnapshot(40, 60, 1787210118, 300, "plus", 25, 75, 1787814918, 10080)
-        self.assertRegex(reset_time_label(snapshot), r"^\d{2}:\d{2}/\d{2}:\d{2}$")
-        self.assertEqual(reset_time_label(UsageSnapshot(40, 60, None, 300, "plus")), "--:--/--:--")
+        self.assertRegex(reset_time_label(snapshot), r"^\d{2}:\d{2}/\d{2}-\d{2}$")
+        self.assertEqual(reset_time_label(UsageSnapshot(40, 60, None, 300, "plus")), "--:--/-- --")
         self.assertLessEqual(vector_text_width(reset_time_label(snapshot), 2), 160)
 
     def test_parse_both_usage_windows(self):

@@ -114,7 +114,12 @@ def reset_time_label(snapshot: UsageSnapshot) -> str:
             return "--:--"
         return dt.datetime.fromtimestamp(timestamp).astimezone().strftime("%H:%M")
 
-    return f"{clock(snapshot.resets_at)}/{clock(snapshot.secondary_resets_at)}"
+    def month_day(timestamp: int | None) -> str:
+        if timestamp is None:
+            return "-- --"
+        return dt.datetime.fromtimestamp(timestamp).astimezone().strftime("%m-%d")
+
+    return f"{clock(snapshot.resets_at)}/{month_day(snapshot.secondary_resets_at)}"
 
 
 def remaining_text(percent: int | None) -> str:

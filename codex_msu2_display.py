@@ -284,7 +284,12 @@ def render_dashboard(snapshot: UsageSnapshot, now: dt.datetime | None = None) ->
             return "--:--"
         return dt.datetime.fromtimestamp(timestamp).astimezone().strftime("%H:%M")
 
-    footer = f"{reset_clock(snapshot.resets_at)}/{reset_clock(snapshot.secondary_resets_at)}"
+    def reset_month_day(timestamp: int | None) -> str:
+        if timestamp is None:
+            return "-- --"
+        return dt.datetime.fromtimestamp(timestamp).astimezone().strftime("%m-%d")
+
+    footer = f"{reset_clock(snapshot.resets_at)}/{reset_month_day(snapshot.secondary_resets_at)}"
     footer_x = (WIDTH - text_width(footer, 2)) // 2
     canvas.draw_text(footer_x, 63, footer, muted, scale=2)
     return canvas
