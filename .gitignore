@@ -4,3 +4,6 @@ __pycache__/
 preview.png
 test-pattern.png
 *.log
+preview/
+preview_real/
+*.bak-*
